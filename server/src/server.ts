@@ -1,28 +1,26 @@
-setTimeout(() => console.log("Hello world"), 1000000);
+import express, { Express, Request, Response, Application } from "express";
+import dotenv from "dotenv";
+import { createServer } from "http";
+import { setupWebSocket } from "./websocket";
 
-// import express, { Express, Request, Response, Application } from "express";
-// import dotenv from "dotenv";
-// import { createServer } from "http";
-// import { setupWebSocket } from "./websocket";
+dotenv.config();
 
-// dotenv.config();
+const app: Application = express();
+const server = createServer(app);
+const port = process.env.PORT || 8000;
 
-// const app: Application = express();
-// const server = createServer(app);
-// const port = process.env.PORT || 8000;
+app.use(express.static("public"));
 
-// app.use(express.static("public"));
+app.get("/", (req: Request, res: Response) => {
+    res.send("Welcome to Express & TypeScript Server");
+});
 
-// app.get("/", (req: Request, res: Response) => {
-//     res.send("Welcome to Express & TypeScript Server");
-// });
+app.get("/health", (req: Request, res: Response) => {
+    res.json({ status: "ok" });
+});
 
-// app.get("/health", (req: Request, res: Response) => {
-//     res.json({ status: "ok" });
-// });
+setupWebSocket(server);
 
-// setupWebSocket(server);
-
-// server.listen(port, () => {
-//     console.log(`Server started at http://localhost:${port}`);
-// });
+server.listen(port, () => {
+    console.log(`Server started at http://localhost:${port}`);
+});
