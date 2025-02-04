@@ -1,0 +1,36 @@
+{
+    "scripts": [
+        {
+            "path": "./scripts/nearhome.sh",
+            "args": ["--force"],
+            "locations": [
+                {
+                    "location": {
+                        "name": "home",
+                        "latitude": 50.81892871782038,
+                        "longitude": -0.12889862231237992
+                    },
+                    "distanceMeters": 500,
+                    "type": "within"
+                }
+            ],
+            "maxLocationAge": 300000
+        },
+        {
+            "path": "./scripts/away.sh",
+            "args": ["--force"],
+            "locations": [
+                {
+                    "location": {
+                        "name": "home",
+                        "latitude": 50.81892871782038,
+                        "longitude": -0.12889862231237992
+                    },
+                    "distanceMeters": 500,
+                    "type": "beyond"
+                }
+            ],
+            "maxLocationAge": 300000
+        }
+    ]
+}
