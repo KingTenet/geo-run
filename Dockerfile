@@ -18,5 +18,5 @@ COPY .env ./
 RUN curl -L https://unpkg.com/@pnpm/self-installer | node
 RUN pnpm install
 RUN pnpm build
-RUN cp -r dist/* /usr/share/nginx/html
+RUN cp -r server/dist/* /usr/share/nginx/html
 

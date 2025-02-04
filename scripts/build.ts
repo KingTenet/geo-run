@@ -19,7 +19,7 @@ function main() {
     exec("pnpm run build", path.join(__dirname, "../server"));
 
     exec("pnpm install", path.join(__dirname, "../daemon"));
-    exec("npm run build", path.join(__dirname, "../daemon"));
+    exec("pnpm run build", path.join(__dirname, "../daemon"));
 
     exec("rm -fr public", path.join(__dirname, "../server"));
     exec("mv ../client/dist public", path.join(__dirname, "../server"));

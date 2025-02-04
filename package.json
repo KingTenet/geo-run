@@ -1,7 +1,7 @@
 {
     "name": "geo-run",
     "private": true,
-    "version": "0.0.0-alpha.1",
+    "version": "0.0.0-alpha.2",
     "scripts": {
         "create-manifest": "ts-node scripts/create-manifest.ts",
         "build": "ts-node scripts/build.ts",
