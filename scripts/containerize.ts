@@ -1,5 +1,4 @@
 import { execSync } from "child_process";
-import { readFileSync } from "fs";
 import path from "path";
 
 function exec(command: string, cwd?: string) {
@@ -11,20 +10,20 @@ function exec(command: string, cwd?: string) {
 }
 
 function main() {
+    const tag = process.argv[2];
+    if (!tag) {
+        console.error("Please provide a tag as an argument");
+        process.exit(1);
+    }
+
     try {
-        const manifestStr = readFileSync("./manifest.json");
-        if (!manifestStr) {
-            throw new Error();
-        }
-
-        const manifest = JSON.parse(manifestStr.toString());
-
         exec(
-            `docker build --build-arg ARTIFACT_URL=${manifest.artifactURL} -t geo-app .`,
+            `docker build --build-arg ARTIFACT_URL=https://github.com/KingTenet/geo-run/archive/refs/tags/${tag}.tar.gz -t geo-run .`,
             path.join(__dirname, "../")
         );
     } catch (err) {
-        console.log("No manifest.json found. Have you run a release?");
+        console.error(err);
+        console.log("Build failed");
     }
 }
 
