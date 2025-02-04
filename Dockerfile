@@ -1,22 +1,26 @@
+FROM node:18-alpine
 
-FROM nginx:stable-alpine
-RUN apk add nodejs
-
-ARG TMP_DIR=/tmp-build-dir
-RUN echo ${TMP_DIR}
-RUN mkdir -p $TMP_DIR
-WORKDIR $TMP_DIR
-
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
 
 ARG ARTIFACT_URL=default
 RUN wget -O geo-run.tar.gz ${ARTIFACT_URL}
-RUN mkdir geo-run
-RUN tar xzvf geo-run.tar.gz  --strip-components=1 -C geo-run
-WORKDIR ${TMP_DIR}/geo-run
-COPY .env ./
-RUN curl -L https://unpkg.com/@pnpm/self-installer | node
-RUN pnpm install
+RUN tar xzvf geo-run.tar.gz  --strip-components=1
+# COPY .env ./
+RUN corepack disable && npm install -g pnpm@latest
+
+RUN pnpm i --frozen-lockfile
 RUN pnpm build
 RUN pnpm version-manifest
-RUN cp -r ../server/dist/* /usr/share/nginx/html
+RUN cp -r server/dist/* ./
 
+EXPOSE 3000
+
+ENV PORT=3000
+# Hostname is overridden by AWS AppRunner, either set it as an env configuration variable in AppRunner
+# or force server.js to use a different env variable or hardcoded value
+# ENV HOSTNAME="0.0.0.0"
+
+# server.js is created by next build from the standalone output
+# https://nextjs.org/docs/pages/api-reference/next-config-js/output
+CMD ["node", "server.js"]

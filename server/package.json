@@ -2,11 +2,11 @@
     "name": "geoscheduler-server",
     "private": true,
     "version": "0.0.0",
-    "main": "index.js",
+    "main": "server.js",
     "scripts": {
         "build": "tsc --build",
-        "start": "node ./dist/index.js",
-        "start:dev": "nodemon ./src/index.ts"
+        "start": "node ./dist/server.js",
+        "start:dev": "nodemon ./src/server.ts"
     },
     "dependencies": {
         "cors": "^2.8.5",
