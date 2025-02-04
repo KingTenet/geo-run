@@ -1,13 +1,13 @@
 {
     "name": "geo-run",
     "private": true,
-    "version": "0.0.0-alpha.3",
+    "version": "0.0.0-alpha.4",
     "scripts": {
         "create-manifest": "ts-node scripts/create-manifest.ts",
         "build": "ts-node scripts/build.ts",
         "containerize": "ts-node scripts/containerize.ts",
         "start": "ts-node scripts/run-container.ts",
-        "version-manifest": "node -e \"const tag = require('./package.json').version; require('child_process').execSync('npm run create-manifest ' + tag)\""
+        "version-manifest": "node -e \"const tag = require('./package.json').version; require('child_process').execSync('pnpm run create-manifest ' + tag)\""
     },
     "dependencies": {
         "dotenv": "^16.4.7"
