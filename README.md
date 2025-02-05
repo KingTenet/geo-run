@@ -10,7 +10,7 @@ Then deploy with:
 
 ```bash
 terraform init
-terraform plan -out # Review the changes
+terraform plan # Review the changes
 terraform apply # Deploy the infrastructure
 ```
 
@@ -20,7 +20,7 @@ Then push the latest container with:
 # Get ECR login credentials
 aws ecr get-login-password --region eu-west-2 | docker login --username AWS --password-stdin $(terraform output -raw ecr_repository_url)
 
-pnpm run containerize
+pnpm run containerize {VERSION_TAG}
 # Tag the image
 docker tag geo-run:latest $(terraform output -raw ecr_repository_url):latest
 

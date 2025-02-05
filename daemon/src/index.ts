@@ -57,7 +57,7 @@ const config: Config = JSON.parse(readFileSync("./config.json", "utf-8"));
 let lastLocation: LocationUpdate | null = null;
 
 function startWS(onClose: () => void) {
-    const ws = new WebSocket(`ws://localhost:${port}`);
+    const ws = new WebSocket(`${process.env.WEBSOCKET_ENDPOINT}`);
 
     ws.on("message", (data) => {
         const parsed = JSON.parse(data.toString());

@@ -112,10 +112,45 @@ resource "aws_lb_target_group" "app" {
   }
 }
 
+# ACM Certificate
+resource "aws_acm_certificate" "main" {
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Certificate Validation
+resource "aws_acm_certificate_validation" "main" {
+  certificate_arn = aws_acm_certificate.main.arn
+  timeouts {
+    create = "30m"
+  }
+}
+
+# Update HTTPS listener to wait for validation
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.main.arn
+  port             = "443"
+  protocol         = "HTTPS"
+  ssl_policy       = "ELBSecurityPolicy-2016-08"
+  certificate_arn  = aws_acm_certificate_validation.main.certificate_arn  # Use validated certificate
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+
+  depends_on = [aws_acm_certificate_validation.main]
+}
+
+# HTTP listener (forwards to target group until HTTPS is ready)
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
-  port              = "80"
-  protocol          = "HTTP"
+  port             = "80"
+  protocol         = "HTTP"
 
   default_action {
     type             = "forward"
@@ -153,7 +188,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
 # ECS Task Definition
 resource "aws_ecs_task_definition" "app" {
   family                   = var.app_name
-  network_mode             = "bridge"  # Change from "awsvpc" to "bridge"
+  network_mode             = "bridge"  # Changed from "awsvpc" to "bridge"
   requires_compatibilities = ["EC2"]
   execution_role_arn      = aws_iam_role.ecs_task_execution_role.arn
   cpu                     = var.container_cpu
@@ -199,7 +234,6 @@ resource "aws_ecs_task_definition" "app" {
   ])
 }
 
-
 # ECS Service
 resource "aws_ecs_service" "app" {
   name            = var.app_name
@@ -213,7 +247,11 @@ resource "aws_ecs_service" "app" {
     container_port   = var.container_port
   }
 
-  depends_on = [aws_lb_listener.http]
+  depends_on = [
+    aws_lb_listener.http,
+    aws_lb.main,
+    aws_lb_target_group.app
+  ]
 }
 
 # EC2 Launch Template
