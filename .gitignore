@@ -25,4 +25,5 @@ dist-ssr
 
 .env*
 manifest.json
-tsconfig.tsbuildinfo 
+tsconfig.tsbuildinfo
+codebase.md

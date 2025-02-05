@@ -26,7 +26,7 @@ function main() {
     exec("docker container rm geo-run", path.join(__dirname, "./"));
     exec(`pnpm run containerize ${tag}`, path.join(__dirname, "./"));
     exec(
-        "docker run --name geo-run -d -p 8080:80 geo-run",
+        "docker run --name geo-run -d -p 3000:3000 geo-run",
         path.join(__dirname, "./")
     );
 }
