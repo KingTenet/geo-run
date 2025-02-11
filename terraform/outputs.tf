@@ -25,6 +25,11 @@ output "vpc_id" {
   value       = module.vpc.vpc_id
 }
 
+output "aws_region" {
+    description = "AWS Region"
+    value = var.aws_region
+}
+
 output "certificate_validation_records" {
   value = {
     for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {

@@ -14,6 +14,12 @@ terraform plan # Review the changes
 terraform apply # Deploy the infrastructure
 ```
 
+```bash
+# Add certificate validation records to DNS provider
+terraform output certificate_validation_records
+terraform output alb_dns_name
+```
+
 Then push the latest container with:
 
 ```bash
@@ -34,5 +40,5 @@ Build and push a new image to ECR
 Force a new deployment in ECS:
 
 ```bash
-aws ecs update-service --cluster geo-run-cluster --service geo-run --force-new-deployment
+aws ecs update-service --cluster geo-run-cluster --service geo-run --force-new-deployment --region $(terraform output -raw aws_region)
 ```
