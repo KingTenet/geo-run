@@ -8,20 +8,10 @@ import { readFileSync } from "fs";
 
 dotenv.config();
 
-const port = process.env.PORT || 8000;
-const CONFIGURED_LAT =
-    process.env.CONFIGURED_LAT && parseFloat(process.env.CONFIGURED_LAT);
-const CONFIGURED_LON =
-    process.env.CONFIGURED_LON && parseFloat(process.env.CONFIGURED_LON);
-
 const AUTHORIZED_LOCATION_PUBLIC_KEY = process.env.CLIENT_PUBLIC_KEY;
 
 const SECRET_KEY = decodeBase64(process.env.DAEMON_PRIVATE_KEY || "");
 const KEY_PAIR = sign.keyPair.fromSecretKey(SECRET_KEY);
-
-const SCRIPT_PATH = process.env.SCRIPT_PATH || "./script.sh";
-const MAX_DISTANCE = 1000; // meters
-const MAX_AGE = 5 * 60 * 1000; // 5 minutes
 
 interface Location {
     name: string;
@@ -40,6 +30,8 @@ interface Script {
     args?: string[];
     locations: LocationCondition[];
     maxLocationAge: number;
+    pollingInterval: number; // milliseconds between script execution
+    initialDelay: number; // milliseconds to wait before starting script execution
 }
 
 interface Config {
@@ -55,6 +47,7 @@ interface LocationUpdate {
 const config: Config = JSON.parse(readFileSync("./config.json", "utf-8"));
 
 let lastLocation: LocationUpdate | null = null;
+let scriptExecutionIntervals: Map<number, NodeJS.Timeout> = new Map();
 
 function startWS(onClose: () => void) {
     const ws = new WebSocket(`${process.env.WEBSOCKET_ENDPOINT}`);
@@ -70,7 +63,7 @@ function startWS(onClose: () => void) {
             AUTHORIZED_LOCATION_PUBLIC_KEY !== clientPublicKey
         ) {
             console.log(
-                "Received message from unkonwn public key " + clientPublicKey
+                "Received message from unknown public key " + clientPublicKey
             );
             return;
         }
@@ -82,6 +75,7 @@ function startWS(onClose: () => void) {
         );
 
         if (!isValid) {
+            console.log("Got message with invalid signature");
             ws.close(1008, "Invalid signature");
             return;
         }
@@ -117,8 +111,16 @@ function startWS(onClose: () => void) {
 }
 
 function start() {
-    actOnLatestLocation();
     getLatestLocation();
+
+    config.scripts.forEach((script, scriptID) => {
+        console.log(
+            `Scheduling script ${script.path} to start in ${script.initialDelay}ms`
+        );
+        setTimeout(() => {
+            startScriptExecution(script, scriptID);
+        }, script.initialDelay);
+    });
 }
 
 function getLatestLocation() {
@@ -139,7 +141,7 @@ function getLatestLocation() {
 
 function shouldExecuteScript(script: Script): [boolean, string[]] {
     if (!lastLocation) {
-        return [true, ["Client has never sent latitude or longitude"]];
+        return [true, ["Waiting for initial location data"]];
     }
 
     const age = Date.now() - new Date(lastLocation.timestamp).getTime();
@@ -180,18 +182,34 @@ function shouldExecuteScript(script: Script): [boolean, string[]] {
     return [locationCriteriaMet, locationReasons];
 }
 
-function actOnLatestLocation() {
-    setInterval(() => {
-        config.scripts.forEach((script) => {
-            const [should, reason] = shouldExecuteScript(script);
-            if (should) {
-                executeScript(script);
-            }
-        });
-    }, 5000);
+function startScriptTimeout(script: Script, scriptId: number) {
+    let timer;
+    timer = setTimeout(() => {
+        const [should, reason] = shouldExecuteScript(script);
+        if (should) {
+            executeScript(script, scriptId);
+        }
+        timer = startScriptTimeout(script, scriptId);
+    }, script.pollingInterval);
+
+    return timer;
 }
 
-function executeScript(script: Script) {
+function startScriptExecution(script: Script, scriptId: number) {
+    if (scriptExecutionIntervals.has(scriptId)) {
+        return; // Already running
+    }
+
+    console.log(
+        `Starting execution for script ${script.path} every ${script.pollingInterval}MS`
+    );
+    const interval = startScriptTimeout(script, scriptId);
+
+    scriptExecutionIntervals.set(scriptId, interval);
+}
+
+function executeScript(script: Script, scriptId: number) {
+    console.log("Executing script " + scriptId);
     exec(
         [script.path, ...(script.args || [])].join(" "),
         (error, stdout, stderr) => {

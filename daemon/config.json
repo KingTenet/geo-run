@@ -1,8 +1,10 @@
 {
     "scripts": [
         {
-            "path": "./scripts/nearhome.sh",
-            "args": ["--force"],
+            "path": "./scripts/kill-apps.sh",
+            "args": ["--dry-run"],
+            "initialDelay": 60000,
+            "pollingInterval": 5000,
             "locations": [
                 {
                     "location": {
@@ -17,17 +19,19 @@
             "maxLocationAge": 300000
         },
         {
-            "path": "./scripts/away.sh",
-            "args": ["--force"],
+            "path": "./scripts/kill-apps.sh",
+            "args": [],
+            "initialDelay": 60000,
+            "pollingInterval": 5000,
             "locations": [
                 {
                     "location": {
-                        "name": "home",
-                        "latitude": 50.81892871782038,
-                        "longitude": -0.12889862231237992
+                        "name": "fornay",
+                        "latitude": 48.853565,
+                        "longitude": 2.3587664
                     },
-                    "distanceMeters": 500,
-                    "type": "beyond"
+                    "distanceMeters": 100,
+                    "type": "within"
                 }
             ],
             "maxLocationAge": 300000
