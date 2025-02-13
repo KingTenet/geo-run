@@ -8,12 +8,97 @@ interface AuthWebSocketOptions {
     onMessage?: (data: unknown) => void;
 }
 
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const RECONNECT_INTERVAL = 5000; // 5 seconds
+
 export function useAuthenticatedWebSocket(
     url: string,
     options: AuthWebSocketOptions = {}
 ) {
     const ws = useRef<WebSocket | null>(null);
     const keyPair = useRef<{ publicKey: Uint8Array; secretKey: Uint8Array }>();
+    const heartbeatInterval = useRef<NodeJS.Timeout>();
+    const reconnectTimeout = useRef<NodeJS.Timeout>();
+
+    const send = (data: object) => {
+        if (!ws.current) return;
+        ws.current.send(JSON.stringify(data));
+    };
+
+    const sendSigned = (data: object) => {
+        if (!keyPair.current) {
+            return;
+        }
+        const messageToSign = JSON.stringify(data);
+        const messageBytes = new TextEncoder().encode(messageToSign);
+        const signature = sign.detached(
+            messageBytes,
+            keyPair.current.secretKey
+        );
+
+        send({
+            ...data,
+            signature: encodeBase64(signature),
+        });
+    };
+
+    const startHeartbeat = () => {
+        if (heartbeatInterval.current) {
+            clearInterval(heartbeatInterval.current);
+        }
+
+        heartbeatInterval.current = setInterval(() => {
+            if (ws.current?.readyState === WebSocket.OPEN) {
+                send({ type: "heartbeat" });
+            }
+        }, HEARTBEAT_INTERVAL);
+    };
+
+    const connect = () => {
+        if (ws.current) {
+            ws.current.close();
+        }
+
+        ws.current = new WebSocket(url);
+
+        ws.current.onopen = () => {
+            if (ws.current && keyPair.current) {
+                sendSigned({
+                    type: "register",
+                    publicKey: encodeBase64(keyPair.current.publicKey),
+                });
+
+                startHeartbeat();
+            }
+            options.onOpen?.();
+        };
+
+        ws.current.onclose = () => {
+            if (heartbeatInterval.current) {
+                clearInterval(heartbeatInterval.current);
+            }
+
+            if (reconnectTimeout.current) {
+                clearTimeout(reconnectTimeout.current);
+            }
+            reconnectTimeout.current = setTimeout(connect, RECONNECT_INTERVAL);
+
+            options.onClose?.();
+        };
+
+        ws.current.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
+
+        ws.current.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                options.onMessage?.(data);
+            } catch (error) {
+                console.error("Error parsing message:", error);
+            }
+        };
+    };
 
     useEffect(() => {
         const storedSecretKey = localStorage.getItem("clientSecretKey");
@@ -28,48 +113,23 @@ export function useAuthenticatedWebSocket(
             );
         }
 
-        ws.current = new WebSocket(url);
+        connect();
 
-        ws.current.onopen = () => {
-            if (ws.current && keyPair.current) {
-                ws.current.send(
-                    JSON.stringify({
-                        type: "register",
-                        publicKey: encodeBase64(keyPair.current.publicKey),
-                    })
-                );
+        return () => {
+            if (ws.current) {
+                ws.current.close();
             }
-            options.onOpen?.();
+            if (heartbeatInterval.current) {
+                clearInterval(heartbeatInterval.current);
+            }
+            if (reconnectTimeout.current) {
+                clearTimeout(reconnectTimeout.current);
+            }
         };
-
-        ws.current.onclose = () => {
-            options.onClose?.();
-        };
-
-        return () => ws.current?.close();
     }, [url]);
 
-    const sendSigned = (data: object) => {
-        if (!ws.current || !keyPair.current) return;
-
-        const messageStr = JSON.stringify(data);
-        const messageBytes = new TextEncoder().encode(messageStr); // Convert string to Uint8Array
-
-        const signature = sign.detached(
-            messageBytes,
-            keyPair.current.secretKey
-        );
-
-        const payload = JSON.stringify({
-            message: messageStr,
-            signature: encodeBase64(signature),
-        });
-
-        ws.current.send(payload);
-    };
-
     return {
-        sendSigned,
+        send,
         readyState: ws.current?.readyState ?? WebSocket.CLOSED,
     };
 }

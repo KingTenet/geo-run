@@ -41,7 +41,7 @@ export default function App() {
         ).catch(() => FALLBACK_POSITION);
 
         console.log("Sending message");
-        ws.sendSigned({
+        ws.send({
             type: "location",
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
