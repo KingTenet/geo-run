@@ -8,7 +8,10 @@ import { readFileSync } from "fs";
 
 dotenv.config();
 
-const AUTHORIZED_LOCATION_PUBLIC_KEY = process.env.CLIENT_PUBLIC_KEY;
+console.log(process.env.WEBSOCKET_ENDPOINT);
+
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const RECONNECT_INTERVAL = 5000; // 5 seconds
 
 const SECRET_KEY = decodeBase64(process.env.DAEMON_PRIVATE_KEY || "");
 const KEY_PAIR = sign.keyPair.fromSecretKey(SECRET_KEY);
@@ -30,8 +33,8 @@ interface Script {
     args?: string[];
     locations: LocationCondition[];
     maxLocationAge: number;
-    pollingInterval: number; // milliseconds between script execution
-    initialDelay: number; // milliseconds to wait before starting script execution
+    pollingInterval: number;
+    initialDelay: number;
 }
 
 interface Config {
@@ -51,59 +54,76 @@ let scriptExecutionIntervals: Map<number, NodeJS.Timeout> = new Map();
 
 function startWS(onClose: () => void) {
     const ws = new WebSocket(`${process.env.WEBSOCKET_ENDPOINT}`);
+    let heartbeatInterval: NodeJS.Timeout;
 
-    ws.on("message", (data) => {
-        const parsed = JSON.parse(data.toString());
-        const signature = decodeBase64(parsed.signature);
-        const clientPublicKey = parsed.publicKey;
-        const messageBytes = new TextEncoder().encode(parsed.message);
-
-        if (
-            !AUTHORIZED_LOCATION_PUBLIC_KEY ||
-            AUTHORIZED_LOCATION_PUBLIC_KEY !== clientPublicKey
-        ) {
-            console.log(
-                "Received message from unknown public key " + clientPublicKey
-            );
-            return;
+    const startHeartbeat = () => {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
         }
 
-        const isValid = sign.detached.verify(
-            messageBytes,
-            signature,
-            decodeBase64(AUTHORIZED_LOCATION_PUBLIC_KEY)
-        );
-
-        if (!isValid) {
-            console.log("Got message with invalid signature");
-            ws.close(1008, "Invalid signature");
-            return;
-        }
-
-        const message = JSON.parse(parsed.message);
-
-        if (message.type === "location") {
-            console.log("Updating location " + JSON.stringify(message));
-            lastLocation = message;
-            config.scripts.forEach((script) => {
-                const [_should, reason] = shouldExecuteScript(script);
-                console.log(reason);
-            });
-        }
-    });
+        heartbeatInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "heartbeat" }));
+            }
+        }, HEARTBEAT_INTERVAL);
+    };
 
     ws.on("open", () => {
         console.log("Registering daemon " + encodeBase64(KEY_PAIR.publicKey));
+        const registrationMessage = {
+            publicKey: encodeBase64(KEY_PAIR.publicKey),
+            timestamp: new Date().toISOString(),
+        };
+
+        const messageBytes = new TextEncoder().encode(
+            JSON.stringify(registrationMessage)
+        );
+        const signature = sign.detached(messageBytes, KEY_PAIR.secretKey);
 
         ws.send(
             JSON.stringify({
                 type: "register",
-                publicKey: encodeBase64(KEY_PAIR.publicKey),
+                message: JSON.stringify(registrationMessage),
+                signature: encodeBase64(signature),
             })
         );
+
+        startHeartbeat();
+    });
+
+    ws.on("message", (data) => {
+        try {
+            const message = JSON.parse(data.toString());
+
+            // Skip heartbeat messages
+            if (message.type === "heartbeat") {
+                return;
+            }
+
+            // Process location updates
+            if (message.type === "location") {
+                console.log("Updating location:", JSON.stringify(message));
+                lastLocation = message;
+                config.scripts.forEach((script) => {
+                    const [_should, reason] = shouldExecuteScript(script);
+                    console.log(reason);
+                });
+            }
+        } catch (err) {
+            console.error("Error processing message:", err);
+        }
+    });
+
+    ws.on("error", (error) => {
+        console.error("WebSocket error:", error);
+        ws.close();
     });
 
     ws.on("close", () => {
+        console.log("WebSocket connection closed");
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+        }
         onClose();
     });
 
@@ -125,18 +145,38 @@ function start() {
 
 function getLatestLocation() {
     let ws: WebSocket;
+    let reconnectTimeout: NodeJS.Timeout;
 
-    setInterval(() => {
+    const connect = () => {
         try {
             if (!ws || ws.readyState !== WebSocket.OPEN) {
                 ws = startWS(() => {
-                    console.log("Web socket closed");
+                    console.log("WebSocket closed, scheduling reconnect");
+                    if (reconnectTimeout) {
+                        clearTimeout(reconnectTimeout);
+                    }
+                    reconnectTimeout = setTimeout(connect, RECONNECT_INTERVAL);
                 });
             }
         } catch (err) {
-            console.error(err);
+            console.error("Error connecting to WebSocket:", err);
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+            reconnectTimeout = setTimeout(connect, RECONNECT_INTERVAL);
         }
-    }, 5000);
+    };
+
+    connect();
+
+    return () => {
+        if (ws) {
+            ws.close();
+        }
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+        }
+    };
 }
 
 function shouldExecuteScript(script: Script): [boolean, string[]] {
@@ -149,7 +189,7 @@ function shouldExecuteScript(script: Script): [boolean, string[]] {
         return [
             true,
             [
-                "The age was older than max age:" +
+                "Location data older than max age:" +
                     age +
                     " vs script max age:" +
                     script.maxLocationAge,
@@ -201,7 +241,7 @@ function startScriptExecution(script: Script, scriptId: number) {
     }
 
     console.log(
-        `Starting execution for script ${script.path} every ${script.pollingInterval}MS`
+        `Starting execution for script ${script.path} every ${script.pollingInterval}ms`
     );
     const interval = startScriptTimeout(script, scriptId);
 

@@ -19,88 +19,96 @@ export function useAuthenticatedWebSocket(
     const keyPair = useRef<{ publicKey: Uint8Array; secretKey: Uint8Array }>();
     const heartbeatInterval = useRef<NodeJS.Timeout>();
     const reconnectTimeout = useRef<NodeJS.Timeout>();
+    const optionsRef = useRef<AuthWebSocketOptions>();
+
+    optionsRef.current = options;
 
     const send = (data: object) => {
         if (!ws.current) return;
         ws.current.send(JSON.stringify(data));
     };
 
-    const sendSigned = (data: object) => {
-        if (!keyPair.current) {
-            return;
-        }
-        const messageToSign = JSON.stringify(data);
-        const messageBytes = new TextEncoder().encode(messageToSign);
-        const signature = sign.detached(
-            messageBytes,
-            keyPair.current.secretKey
-        );
-
-        send({
-            ...data,
-            signature: encodeBase64(signature),
-        });
-    };
-
-    const startHeartbeat = () => {
-        if (heartbeatInterval.current) {
-            clearInterval(heartbeatInterval.current);
-        }
-
-        heartbeatInterval.current = setInterval(() => {
-            if (ws.current?.readyState === WebSocket.OPEN) {
-                send({ type: "heartbeat" });
+    useEffect(() => {
+        const sendSigned = (data: object) => {
+            if (!keyPair.current) {
+                return;
             }
-        }, HEARTBEAT_INTERVAL);
-    };
+            const messageToSign = JSON.stringify(data);
+            const messageBytes = new TextEncoder().encode(messageToSign);
+            const signature = sign.detached(
+                messageBytes,
+                keyPair.current.secretKey
+            );
 
-    const connect = () => {
-        if (ws.current) {
-            ws.current.close();
-        }
-
-        ws.current = new WebSocket(url);
-
-        ws.current.onopen = () => {
-            if (ws.current && keyPair.current) {
-                sendSigned({
-                    type: "register",
-                    publicKey: encodeBase64(keyPair.current.publicKey),
-                });
-
-                startHeartbeat();
-            }
-            options.onOpen?.();
+            send({
+                type: "register",
+                message: messageToSign,
+                signature: encodeBase64(signature),
+            });
         };
 
-        ws.current.onclose = () => {
+        const startHeartbeat = () => {
             if (heartbeatInterval.current) {
                 clearInterval(heartbeatInterval.current);
             }
 
-            if (reconnectTimeout.current) {
-                clearTimeout(reconnectTimeout.current);
+            heartbeatInterval.current = setInterval(() => {
+                if (ws.current?.readyState === WebSocket.OPEN) {
+                    send({ type: "heartbeat" });
+                }
+            }, HEARTBEAT_INTERVAL);
+        };
+
+        const connect = () => {
+            if (ws.current) {
+                ws.current.close();
             }
-            reconnectTimeout.current = setTimeout(connect, RECONNECT_INTERVAL);
 
-            options.onClose?.();
+            console.log("Connecting to: " + url);
+            ws.current = new WebSocket(url);
+
+            ws.current.onopen = () => {
+                if (ws.current && keyPair.current) {
+                    sendSigned({
+                        type: "register",
+                        publicKey: encodeBase64(keyPair.current.publicKey),
+                    });
+                    startHeartbeat();
+                }
+
+                optionsRef.current?.onOpen?.();
+            };
+
+            ws.current.onclose = () => {
+                if (heartbeatInterval.current) {
+                    clearInterval(heartbeatInterval.current);
+                }
+
+                if (reconnectTimeout.current) {
+                    clearTimeout(reconnectTimeout.current);
+                }
+                reconnectTimeout.current = setTimeout(
+                    connect,
+                    RECONNECT_INTERVAL
+                );
+
+                optionsRef.current?.onClose?.();
+            };
+
+            ws.current.onerror = (error) => {
+                console.error("WebSocket error:", error);
+            };
+
+            ws.current.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    optionsRef.current?.onMessage?.(data);
+                } catch (error) {
+                    console.error("Error parsing message:", error);
+                }
+            };
         };
 
-        ws.current.onerror = (error) => {
-            console.error("WebSocket error:", error);
-        };
-
-        ws.current.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                options.onMessage?.(data);
-            } catch (error) {
-                console.error("Error parsing message:", error);
-            }
-        };
-    };
-
-    useEffect(() => {
         const storedSecretKey = localStorage.getItem("clientSecretKey");
         if (storedSecretKey) {
             const secretKey = decodeBase64(storedSecretKey);
@@ -116,7 +124,9 @@ export function useAuthenticatedWebSocket(
         connect();
 
         return () => {
+            console.log("Unmounting or got new url,options");
             if (ws.current) {
+                console.log("Closing websocket");
                 ws.current.close();
             }
             if (heartbeatInterval.current) {

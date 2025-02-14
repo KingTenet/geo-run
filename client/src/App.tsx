@@ -17,8 +17,12 @@ const FALLBACK_POSITION: GeolocationPosition = {
     toJSON: () => JSON.stringify({}),
 };
 
+const wsPort = import.meta.env.PROD ? window.location.port : "8000";
+const hostWithoutPort = window.location.host
+    .split(window.location.port)[0]
+    .slice(0, -1);
 const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-const wsUrl = `${wsProtocol}//${window.location.host}`;
+const wsUrl = `${wsProtocol}//${hostWithoutPort}:${wsPort}`;
 
 export default function App() {
     const [status, setStatus] = useState("");
@@ -40,7 +44,9 @@ export default function App() {
             }
         ).catch(() => FALLBACK_POSITION);
 
-        console.log("Sending message");
+        console.log(
+            "Sending message with position " + JSON.stringify(position)
+        );
         ws.send({
             type: "location",
             latitude: position.coords.latitude,

@@ -14,6 +14,9 @@ const REGISTRATION_TIMEOUT = 5000;
 const AUTHORIZED_LOCATION_PUBLIC_KEY = process.env.CLIENT_PUBLIC_KEY;
 const AUTHORIZED_DAEMON_PUBLIC_KEY = process.env.DAEMON_PUBLIC_KEY;
 
+console.log(AUTHORIZED_LOCATION_PUBLIC_KEY);
+console.log(AUTHORIZED_DAEMON_PUBLIC_KEY);
+
 interface ExtendedWebSocket extends WebSocket {
     isAlive?: boolean;
     clientPublicKey?: string;
@@ -48,11 +51,16 @@ export function setupWebSocket(server: HTTPSServer | HTTPServer) {
                 // Handle initial registration - this is the only time we verify signatures
                 if (!ws.clientPublicKey) {
                     if (parsed.type !== "register") {
+                        console.log(
+                            "Closing connection - expected registration message"
+                        );
                         ws.close(1008, "Expected registration message");
                         return;
                     }
 
-                    const { signature, ...signedMessage } = parsed;
+                    const { signature, message } = parsed;
+
+                    const signedMessage = JSON.parse(message);
                     const publicKey = signedMessage.publicKey;
 
                     // Verify the public key is authorized
@@ -66,9 +74,7 @@ export function setupWebSocket(server: HTTPSServer | HTTPServer) {
                     }
 
                     // Verify ownership of private key through signature
-                    const messageBytes = new TextEncoder().encode(
-                        signedMessage
-                    );
+                    const messageBytes = new TextEncoder().encode(message);
                     const signatureBytes = decodeBase64(signature);
                     const publicKeyBytes = decodeBase64(publicKey);
 
@@ -115,6 +121,7 @@ export function setupWebSocket(server: HTTPSServer | HTTPServer) {
         });
 
         ws.on("close", () => {
+            console.log("Connection was closed:" + ws.clientPublicKey);
             clearTimeout(registrationTimeout);
             if (ws.heartbeatTimer) {
                 clearTimeout(ws.heartbeatTimer);
